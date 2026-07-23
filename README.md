@@ -266,7 +266,8 @@ Dos detalles de diseño que pagaron solos:
 | **Bot de solo lectura** | Nunca responde, nunca envía. Un bot que escribe en el WhatsApp de la empresa es un riesgo que el negocio no acepta | Automatizar confirmaciones |
 | **Revisión humana obligatoria** | El parser acierta mucho, pero "mucho" no es suficiente cuando compras género perecedero | Automatización total |
 | **Print-first** | El operario apunta pesos a mano sobre el papel mientras prepara. Esa parte *debe* seguir en papel | "Modernizar" por modernizar |
-| **Contenedor como root** ⚠️ | Se intentó lo contrario: bajo Podman rootless el mapeo de UID rompía las escrituras mientras las lecturas funcionaban — un fallo silencioso disfrazado de *"contraseña incorrecta"*. Revertido conscientemente y compensado: puerto solo en localhost, `no-new-privileges`, red privada sin exposición a internet | Aislamiento ideal, a cambio de no tener una falsa sensación de seguridad |
+| **Contenedor como root** ⚠️ | Se intentó lo contrario: bajo Podman rootless el mapeo de UID rompía las escrituras mientras las lecturas funcionaban — un fallo silencioso disfrazado de *"contraseña incorrecta"*. Revertido conscientemente y compensado: puerto solo en localhost, `no-new-privileges` y sin puertos abiertos al exterior | Aislamiento ideal, a cambio de no tener una falsa sensación de seguridad |
+| **Acceso público por túnel, no abriendo puertos** | Nació como servicio de red privada: para entrar había que estar en la VPN. Cuando los usuarios pidieron consultar los pedidos desde el móvil, la opción cómoda era abrir el 443 y poner un dominio propio. Se eligió lo contrario: un túnel inverso que publica el servicio **sin abrir un solo puerto en la máquina** y sin exponer su IP. Y antes de encender nada, contraseña larga | Un dominio bonito. La URL es fea, pero se instala como app en el móvil y no se escribe nunca |
 
 ## 🔐 Seguridad
 

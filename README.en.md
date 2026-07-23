@@ -268,7 +268,8 @@ Two design details that paid for themselves:
 | **Read-only bot** | Never replies, never sends. A bot that writes from the company's WhatsApp is a risk the business won't take | Automated confirmations |
 | **Mandatory human review** | The parser is right a lot, but "a lot" isn't enough when you're buying perishable goods | Full automation |
 | **Print-first** | The operator writes weights by hand on the sheet while packing. That part *should* stay on paper | "Modernising" for its own sake |
-| **Container as root** ⚠️ | The opposite was attempted: under rootless Podman the UID mapping broke writes while reads kept working — a silent failure disguised as *"wrong password"*. Reverted deliberately and compensated: localhost-only port, `no-new-privileges`, private network with no internet exposure | Ideal isolation, in exchange for not having a false sense of security |
+| **Container as root** ⚠️ | The opposite was attempted: under rootless Podman the UID mapping broke writes while reads kept working — a silent failure disguised as *"wrong password"*. Reverted deliberately and compensated: localhost-only port, `no-new-privileges`, and no ports open to the outside | Ideal isolation, in exchange for not having a false sense of security |
+| **Public access through a tunnel, not by opening ports** | It started as a private-network service: to get in, you had to be on the VPN. When users asked to check orders from their phones, the easy option was to open 443 and point a custom domain at it. The opposite was chosen: a reverse tunnel that publishes the service **without opening a single port on the machine** and without exposing its IP. And before switching anything on, a long password | A pretty domain. The URL is ugly, but it installs as an app on the phone and nobody ever types it |
 
 ## 🔐 Security
 
