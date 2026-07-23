@@ -82,7 +82,7 @@ flowchart LR
 
 ---
 
-## 🐛 Three problems you don't see coming
+## 🐛 Four problems you don't see coming
 
 The CRUD was the easy part. The interesting stuff showed up **after going to production**.
 
@@ -195,6 +195,30 @@ That forced a data-model change (an order now has N messages) with an **automati
 
 ---
 
+### 4️⃣ Real data tells you what the code won't
+
+Three weeks in, instead of reading code I dumped **91 real orders and 391 lines** from production and compared, line by line, what the customer wrote against what the parser extracted.
+
+This showed up:
+
+```
+Customer: "Plátanos manillas"  ->  (nothing)
+Customer: "Manzana roja"       ->  (nothing)
+Customer: "Saco de cebolla"    ->  (nothing)
+```
+
+A line that **named a product but didn't say how much** was dropped entirely. Not flagged, not logged, no trace. And some customers order exactly like that, because they assume the seller already knows how many bunches to give them.
+
+The damage over three weeks: **14 lost lines**. One customer ordered bananas **four times** and never got them. One of those orders was **confirmed and printed** without the product — nobody noticed, because it never appeared on the review screen.
+
+No test would have caught it: the system did exactly what its code said. The rule *"no number, no order"* is perfectly reasonable in an office and perfectly wrong in a market.
+
+That line now arrives **flagged in red** with quantity 0 and a notice — *"The customer didn't say how much: set the quantity or remove it"* — for a human to resolve. **When the system doesn't know something, it says so; it doesn't quietly decide the thing doesn't exist.**
+
+From 14 lost lines to 0. Four more fixes fell out along the way: half a kilo vanishing in *"1k y medio"*, parenthetical notes splitting the totals, and units that only exist in a market (*sacks*, *bunches*, *punnets*).
+
+---
+
 ## 🏗️ Architecture
 
 ```mermaid
@@ -253,7 +277,7 @@ Treated as a feature, and audited by **attacking, not reading**:
 - **XSS**: real payloads injected (`<img onerror=...>` via client name and message text) → render as inert text. Verified in a real browser by confirming the live node **doesn't exist** in the DOM. Strict CSP as a second wall.
 - **SQLi**: `1;DROP TABLE pedidos` bounces with a 404 and the tables are still there. Parameterised SQL everywhere, including the one dynamic statement (column whitelist).
 - **Auth**: scrypt, constant-time comparisons, session regeneration on login, brute-force lockout, invalidation of all other sessions on password change.
-- **ReDoS**: ruled out — 70,000 characters parsed in 9 ms.
+- **ReDoS**: found and fixed. The story is below.
 - **Boundaries**: constant-time webhook token, validated timestamps, clamped quantities.
 
 ```js
@@ -266,6 +290,23 @@ function tokenValido(recibido) {
   return crypto.timingSafeEqual(a, b);
 }
 ```
+
+**The bug introduced by the previous fix.** An earlier version of this document claimed, with a measurement behind it: *"ReDoS ruled out — 70,000 characters parsed in 9 ms"*. That was true **when it was measured**.
+
+A month later I added a pattern to understand *"1k y medio"* (a kilo and a half), and a later audit took it apart:
+
+```js
+// This pattern looks harmless. It isn't.
+/(\d+)\s*(k|kg|kilos?|cajas?|unidades?|uds?)?\s+y\s+medi[oa]\b/i
+```
+
+Given a long number **without** *"y medio"* after it, the engine tries to match from every digit and walks the rest on each attempt: **quadratic time**. A message with 30,000 digits — which a customer can send over WhatsApp — froze the server for **7 seconds**. And Node is single-threaded: for that whole stretch, the app serves nobody.
+
+The fix is one character: `\d+` → `\d{1,6}`. **7003 ms → 13 ms**, without losing a single real quantity.
+
+Two lessons, and the second stings more. One: **a patch that solves one case can open a worse one**. Two: that 9 ms measurement wasn't a lie — it was **a guarantee with an expiry date**, about code that no longer existed. Security claims have to be re-measured, not remembered.
+
+The same pass turned up an `Infinity` quantity being written to the database and poisoning the day's totals, plus nine spots where an unexpected type took down an endpoint. None of it allowed reading anyone else's data — but *"not exploitable"* is not the same as *"fine"*.
 
 **One bug the audit caught** (and why you audit at all): mistyping your current password **kicked you out to the login screen**. The backend returned `401` ("not authenticated") for what was really a `403` ("authenticated, but that credential is wrong"), and the frontend — correctly — treats every `401` as an expired session. The right message was already written; it simply **never ran**.
 
@@ -285,6 +326,7 @@ An uncomfortable lesson: **half the "failures" you find are your tests' fault.**
 | **Hardware** | **1 GB RAM** VM |
 | **Parser catalogue** | 100+ products with aliases and units |
 | **Parser improvement from real data** | **−60%** recognition failures |
+| **Audit over production data** | 91 orders · 391 lines · **14 lost orders → 0** |
 | **Vulnerabilities** (`npm audit`, web) | **0** |
 
 ## 🗂️ About the code

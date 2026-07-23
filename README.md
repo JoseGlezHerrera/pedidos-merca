@@ -80,7 +80,7 @@ flowchart LR
 
 ---
 
-## 🐛 Tres problemas que no se ven venir
+## 🐛 Cuatro problemas que no se ven venir
 
 Montar el CRUD fue lo fácil. Lo interesante apareció **después de ponerlo en producción**.
 
@@ -193,6 +193,30 @@ Eso obligó a un cambio de modelo de datos (un pedido pasa a tener N mensajes) c
 
 ---
 
+### 4️⃣ Los datos reales te dicen lo que el código no
+
+Tres semanas después, en vez de leer código, volqué **91 pedidos reales y 391 líneas** de producción y comparé, línea a línea, lo que escribió el cliente contra lo que el parser extrajo.
+
+Apareció esto:
+
+```
+Cliente: "Plátanos manillas"   ->  (nada)
+Cliente: "Manzana roja"        ->  (nada)
+Cliente: "Saco de cebolla"     ->  (nada)
+```
+
+Una línea que **nombraba un producto pero no decía cuánto** se descartaba entera. Sin marcarla, sin avisar, sin dejar rastro. Y hay clientes que piden justo así, porque dan por hecho que el vendedor ya sabe cuántas manillas ponerles.
+
+El daño en tres semanas: **14 líneas perdidas**. Un mismo cliente pidió plátanos **cuatro veces** sin que se le compraran nunca. Y uno de esos pedidos llegó a **confirmarse e imprimirse** sin el producto — nadie lo notó, porque en la pantalla de revisión no aparecía.
+
+Ninguna prueba lo habría cazado: el sistema hacía exactamente lo que decía su código. La regla *"si no hay número, no es un pedido"* es perfectamente razonable en un despacho, y perfectamente falsa en un mercado.
+
+Ahora esa línea entra **marcada en rojo** con cantidad 0 y un aviso — *"El cliente lo pidió sin decir cuánto: pon la cantidad o quítalo"* — para que lo resuelva una persona. **Si el sistema no sabe algo, lo dice; no decide por su cuenta que no existe.**
+
+De 14 líneas perdidas a 0. Y por el camino salieron cuatro cosas más: medio kilo que se perdía en *"1k y medio"*, los recados entre paréntesis rompiendo los totales, y unidades que solo existen en un mercado (*sacos*, *manillas*, *tarrinas*).
+
+---
+
 ## 🏗️ Arquitectura
 
 ```mermaid
@@ -251,7 +275,7 @@ Se trató como una funcionalidad, y se auditó **atacando, no leyendo**:
 - **XSS**: inyectados payloads reales (`<img onerror=...>` vía nombre de cliente y texto de mensaje) → renderizan como texto inerte. Verificado en un navegador real comprobando que el nodo vivo **no existe** en el DOM. CSP estricta como segunda muralla.
 - **SQLi**: `1;DROP TABLE pedidos` rebota con un 404 y las tablas siguen ahí. SQL parametrizado en todas partes, incluida la única sentencia dinámica (lista blanca de columnas).
 - **Auth**: scrypt, comparaciones en tiempo constante, regeneración de sesión al entrar, bloqueo anti-fuerza-bruta, invalidación del resto de sesiones al cambiar la contraseña.
-- **ReDoS**: descartado — 70.000 caracteres parseados en 9 ms.
+- **ReDoS**: encontrado y corregido. La historia, abajo.
 - **Fronteras**: token del webhook comparado en tiempo constante, timestamps validados, cantidades acotadas.
 
 ```js
@@ -264,6 +288,23 @@ function tokenValido(recibido) {
   return crypto.timingSafeEqual(a, b);
 }
 ```
+
+**El fallo que introdujo el arreglo anterior.** Una versión previa de este documento afirmaba, con una medición detrás: *"ReDoS descartado — 70.000 caracteres parseados en 9 ms"*. Era cierto **cuando se midió**.
+
+Un mes después añadí un patrón para entender *"1k y medio"*, y una auditoría posterior lo desmontó:
+
+```js
+// Este patrón parece inofensivo. No lo es.
+/(\d+)\s*(k|kg|kilos?|cajas?|unidades?|uds?)?\s+y\s+medi[oa]\b/i
+```
+
+Ante un número largo **sin** *"y medio"* detrás, el motor prueba a casar desde cada dígito y recorre el resto en cada intento: **tiempo cuadrático**. Un mensaje con 30.000 dígitos — que un cliente puede enviar por WhatsApp — bloqueaba el servidor **7 segundos**. Y Node es de un solo hilo: durante ese rato, la app no atiende a nadie.
+
+El arreglo es un carácter: `\d+` → `\d{1,6}`. **7003 ms → 13 ms**, sin perder ninguna cantidad real.
+
+Dos lecciones, y la segunda duele más que la primera. Una: **un parche que resuelve un caso puede abrir otro peor**. Otra: aquella medición de 9 ms no era mentira, era **una garantía con fecha de caducidad** sobre un código que ya no existía. Las afirmaciones de seguridad hay que volver a medirlas, no recordarlas.
+
+En la misma pasada aparecieron una cantidad `Infinity` que se guardaba en la base de datos y envenenaba los totales del día, y nueve puntos donde un tipo inesperado tumbaba un endpoint. Nada de eso permitía leer datos ajenos — pero *"no es explotable"* no es lo mismo que *"está bien"*.
 
 **Un bug que encontró la auditoría** (y que ilustra por qué se audita): equivocarse al escribir tu contraseña actual **te echaba a la pantalla de login**. El backend devolvía `401` ("no autenticado") para un caso que en realidad era `403` ("autenticado, pero esa credencial no vale"), y el frontend — correctamente — trata todo `401` como sesión caducada. El aviso correcto ya estaba escrito; simplemente **nunca llegaba a ejecutarse**.
 
@@ -283,6 +324,7 @@ Un aprendizaje incómodo: **la mitad de los "fallos" que encuentras son de tus t
 | **Hardware** | VM de **1 GB de RAM** |
 | **Catálogo del parser** | +100 productos con alias y unidades |
 | **Mejora del parser con datos reales** | **−60%** de fallos de reconocimiento |
+| **Auditoría sobre datos de producción** | 91 pedidos · 391 líneas · **14 pedidos perdidos → 0** |
 | **Vulnerabilidades** (`npm audit`, web) | **0** |
 
 ## 🗂️ Sobre el código
