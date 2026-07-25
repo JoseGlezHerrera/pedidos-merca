@@ -82,7 +82,7 @@ flowchart LR
 
 ---
 
-## 🐛 Four problems you don't see coming
+## 🐛 Five problems you don't see coming
 
 The CRUD was the easy part. The interesting stuff showed up **after going to production**.
 
@@ -219,6 +219,24 @@ From 14 lost lines to 0. Four more fixes fell out along the way: half a kilo van
 
 ---
 
+### 5️⃣ Paper doesn't lie (even when the tests do)
+
+The stall's previous owner used a working sheet for himself: every business of the day on one page, with room to write the real weight and price by hand. I set out to replicate it, cleaner.
+
+I built it. It looked fine on screen. It passed every test: the print button fired, the sheet had the right businesses, zero errors. Green all the way.
+
+I hit print for real and out came **five pages** — with the entire interface (the order list, the buttons, the top bar) sneaking in as the first page, and the content after.
+
+No test had caught it, because I was checking that the function ran and that the HTML was correct. I never checked **what's visible when printing** — which is exactly what paper shows you on the first try. A test that looks at the HTML but not the result has a blind spot, and mine landed right there.
+
+I fixed it, printed again… and this time the layout was right, but each business's block **bled into the next**: without the grid that used to separate them, a business name sat flush against the previous order and it all read as one continuous list. Paper, again, showing what the screen hid.
+
+The final version —bands per business, striping to follow the row— came out of print, look, fix, repeat. Three times.
+
+It's the same lesson as the lost bananas and the ReDoS I introduced myself: **the system did exactly what its code said, and it was still wrong.** The only way to see it was to look at reality —real data, real time, real paper— instead of trusting that the tests passed. The test that emulates print mode and checks only the sheet is visible, I wrote it **after** paper showed me the bug, not before.
+
+---
+
 ## 🏗️ Architecture
 
 ```mermaid
@@ -316,6 +334,8 @@ The same pass turned up an `Infinity` quantity being written to the database and
 The whole UI is regression-tested with **Playwright against a real browser**: login, message merging, review and confirm-with-date, discard, move-to-day, delete, invoices, printing, totals, agenda, settings, password rotation and logout. Plus parser tests over the real corpus (collisions, varieties, synonyms).
 
 An uncomfortable lesson: **half the "failures" you find are your tests' fault.** I learned not to trust a red until I reproduce it by hand — three consecutive false positives (a modal the test never answered, a card that reorders when marked "ready", an API login that regenerated the session) would have had me "fixing" code that was perfectly fine.
+
+And the flip side, which stings more: **a green test doesn't mean it works.** The whole suite passed on the print sheet, and it still came out wrong on paper (story 5) — because the test checked that the code ran, not what the user saw in the end. A red can lie; so can a green. The only thing that doesn't lie is reality: the real data, the real paper.
 
 ## 📊 Numbers
 

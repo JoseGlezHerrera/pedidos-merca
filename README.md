@@ -80,7 +80,7 @@ flowchart LR
 
 ---
 
-## 🐛 Cuatro problemas que no se ven venir
+## 🐛 Cinco problemas que no se ven venir
 
 Montar el CRUD fue lo fácil. Lo interesante apareció **después de ponerlo en producción**.
 
@@ -217,6 +217,24 @@ De 14 líneas perdidas a 0. Y por el camino salieron cuatro cosas más: medio ki
 
 ---
 
+### 5️⃣ El papel no miente (aunque los tests digan que sí)
+
+El dueño anterior del puesto usaba una hoja de trabajo para él: todos los negocios del día en una hoja, con hueco a mano para el peso real y el precio. Quise replicarla, más limpia.
+
+La monté. Se veía bien en pantalla. Pasaba todos los tests: el botón de imprimir se llamaba, la hoja tenía los negocios correctos, cero errores. Verde por todas partes.
+
+Le di a imprimir de verdad y salieron **cinco páginas** — con la interfaz entera (la lista de pedidos, los botones, la barra superior) colada como primera hoja, y el contenido después.
+
+Ningún test lo había cazado, porque yo verificaba que la función se ejecutara y que el HTML fuera correcto. Nunca comprobé **qué queda visible al imprimir** — que es justo lo que el papel enseña a la primera. Un test que mira el HTML pero no el resultado tiene un punto ciego, y el mío caía ahí.
+
+Lo arreglé, volví a imprimir… y esta vez el formato salía bien, pero los bloques de cada negocio **se fundían unos con otros**: sin la rejilla que los separaba antes, el nombre de un negocio quedaba pegado al pedido anterior y todo parecía una lista continua. El papel, otra vez, mostrando lo que la pantalla escondía.
+
+La versión final —bandas por negocio, rayado para seguir el renglón— salió de imprimir, mirar, corregir, repetir. Tres veces.
+
+Es la misma lección que los plátanos perdidos y que el ReDoS que yo mismo introduje: **el sistema hacía exactamente lo que su código decía, y aun así estaba mal.** La única forma de verlo fue mirar la realidad —los datos reales, el tiempo real, el papel real— en vez de fiarme de que los tests pasaran. El test que emula el modo impresión y comprueba que solo se ve la hoja lo escribí **después** de que el papel me enseñara el fallo, no antes.
+
+---
+
 ## 🏗️ Arquitectura
 
 ```mermaid
@@ -314,6 +332,8 @@ En la misma pasada aparecieron una cantidad `Infinity` que se guardaba en la bas
 La interfaz completa se somete a regresión con **Playwright contra un navegador real**: login, fusión de mensajes, revisión y confirmación con fecha, descartar, mover de día, eliminar, facturas, impresión, totales, agenda, ajustes, rotación de contraseña y cierre de sesión. Más pruebas de parser sobre el corpus real (colisiones, variedades, sinónimos).
 
 Un aprendizaje incómodo: **la mitad de los "fallos" que encuentras son de tus tests.** Aprendí a no fiarme de un rojo hasta reproducirlo a mano — tres falsos positivos seguidos (un modal que el test no respondía, una tarjeta que se reordena al marcarse "lista", un login por API que regeneraba la sesión) me habrían hecho "arreglar" código que estaba perfecto.
+
+Y el reverso, que escuece más: **un test en verde no significa que funcione.** Toda la suite pasaba sobre la hoja de impresión, y aun así salía mal en papel (historia 5) — porque el test comprobaba que el código se ejecutara, no lo que veía el usuario al final. Un rojo puede ser mentira; un verde también. Lo único que no miente es la realidad: el dato real, el papel real.
 
 ## 📊 Números
 
