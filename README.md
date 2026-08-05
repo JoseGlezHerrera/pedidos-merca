@@ -80,7 +80,7 @@ flowchart LR
 
 ---
 
-## 🐛 Cinco problemas que no se ven venir
+## 🐛 Seis problemas que no se ven venir
 
 Montar el CRUD fue lo fácil. Lo interesante apareció **después de ponerlo en producción**.
 
@@ -232,6 +232,34 @@ Lo arreglé, volví a imprimir… y esta vez el formato salía bien, pero los bl
 La versión final —bandas por negocio, rayado para seguir el renglón— salió de imprimir, mirar, corregir, repetir. Tres veces.
 
 Es la misma lección que los plátanos perdidos y que el ReDoS que yo mismo introduje: **el sistema hacía exactamente lo que su código decía, y aun así estaba mal.** La única forma de verlo fue mirar la realidad —los datos reales, el tiempo real, el papel real— en vez de fiarme de que los tests pasaran. El test que emula el modo impresión y comprueba que solo se ve la hoja lo escribí **después** de que el papel me enseñara el fallo, no antes.
+
+---
+
+### 6️⃣ El bot decía "conectado" y llevaba tres semanas sordo
+
+Llamada del dueño: "hay pedidos que no salen". La web funcionaba, la base de datos estaba sana y el bot reportaba `MAIN (NORMAL)`: conectado. Pero el último mensaje con identificador de WhatsApp era **de hacía tres semanas**.
+
+Lo que lo hacía difícil de ver es que no fallaba del todo. Algunos pedidos sí entraban. Nadie sospecha de un sistema que funciona a medias.
+
+Descarté por capas: la app respondía, la VM tenía RAM de sobra, alcanzaba los servidores de WhatsApp, el filtro de contactos era correcto, el teléfono estaba encendido. Todo sano. Y aun así, cero mensajes.
+
+La primera pista real salió al preguntarle directamente por los chats:
+
+```
+Cannot read properties of undefined (reading 'get')
+```
+
+Ese `.get()` sobre `undefined` es el almacén interno de WhatsApp Web. **WhatsApp había actualizado su web y la librería se había quedado atrás**: conectaba —la red iba bien— pero ya no encontraba las estructuras donde viven los mensajes. Actualizarla devolvió el flujo, y recuperó de golpe los pedidos que llevaban días sin leer.
+
+Fin de la historia, pensé. No lo era.
+
+**Segundo fondo.** Los pedidos entraban, pero **a rachas y con horas de retraso**. Y peor: el sondeo de respaldo que yo mismo había añadido *por si acaso* fallaba cada 30 segundos, duplicaba pedidos y ahogaba al bot. Mi red de seguridad se había convertido en el problema. Fuera.
+
+**Tercer fondo, el de verdad.** La librería cierra la sesión si no termina de conectar en **60 segundos**. En una VM de 1 GB con CPU compartida, WhatsApp Web tarda más. Así que el bot **se mataba solo**, el supervisor lo relanzaba diez segundos después, y vuelta a empezar. De ahí salía todo lo demás: los pedidos llegaban a rachas porque cada arranque relanzaba la recuperación de las últimas horas en lugar de recibir en vivo; Chromium moría a medias en cada ciclo, corrompiendo poco a poco el perfil donde vive la sesión; y con el QR en pantalla, ese mismo temporizador lo caducaba cada minuto — por eso no daba tiempo ni a escanearlo.
+
+Y quedaba un cuarto, más silencioso. El filtro que decide si un contacto es cliente miraba dos o tres campos del mensaje. Pero WhatsApp rellena unos campos u otros **según por dónde llegue**: los mensajes recuperados al arrancar vienen más pelados, con el nombre en otro sitio. El bot los veía "sin nombre", no pasaban el filtro y **se perdían en silencio** — aunque el contacto estuviera correctamente marcado. Justo los recuperados tras cada reinicio, que eran la mayoría.
+
+Cuatro causas apiladas, cada una tapando a la siguiente, y un solo síntoma: *"unos pedidos entran y otros no"*. La lección no es técnica: **un síntoma que parece diez cosas puede ser varias causas encadenadas**, y parchear lo que se ve —como hice con el sondeo— añade fallos nuevos encima de los viejos. El bucle solo se rompió cuando dejé de tapar síntomas y busqué qué hacía que el bot se reiniciara.
 
 ---
 

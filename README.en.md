@@ -82,7 +82,7 @@ flowchart LR
 
 ---
 
-## 🐛 Five problems you don't see coming
+## 🐛 Six problems you don't see coming
 
 The CRUD was the easy part. The interesting stuff showed up **after going to production**.
 
@@ -234,6 +234,34 @@ I fixed it, printed again… and this time the layout was right, but each busine
 The final version —bands per business, striping to follow the row— came out of print, look, fix, repeat. Three times.
 
 It's the same lesson as the lost bananas and the ReDoS I introduced myself: **the system did exactly what its code said, and it was still wrong.** The only way to see it was to look at reality —real data, real time, real paper— instead of trusting that the tests passed. The test that emulates print mode and checks only the sheet is visible, I wrote it **after** paper showed me the bug, not before.
+
+---
+
+### 6️⃣ The bot said "connected" and had been deaf for three weeks
+
+A call from the owner: "some orders aren't showing up". The web app worked, the database was healthy, and the bot reported `MAIN (NORMAL)` — connected. But the last message carrying a WhatsApp identifier was **three weeks old**.
+
+What made it hard to spot is that it wasn't failing completely. Some orders did come through. Nobody suspects a system that half works.
+
+I ruled things out layer by layer: the app responded, the VM had plenty of RAM, it reached WhatsApp's servers, the contact filter was correct, the phone was on. All healthy. And still, zero messages.
+
+The first real clue came from asking it directly about the chats:
+
+```
+Cannot read properties of undefined (reading 'get')
+```
+
+That `.get()` on `undefined` is WhatsApp Web's internal store. **WhatsApp had updated its web client and the library had fallen behind**: it connected — the network was fine — but could no longer find the structures where messages live. Updating it brought the flow back, and pulled in the orders that had sat unread for days.
+
+End of story, I thought. It wasn't.
+
+**Second layer.** Orders were arriving, but **in bursts, hours late**. Worse: the backup polling I had added *just in case* was timing out every 30 seconds, duplicating orders and choking the bot. My safety net had become the problem. Out it went.
+
+**Third layer, the real one.** The library closes the session if it doesn't finish connecting within **60 seconds**. On a 1 GB VM with shared CPU, WhatsApp Web takes longer. So the bot **killed itself**, the supervisor relaunched it ten seconds later, and round it went. Everything else fell out of that: orders arrived in bursts because each startup re-ran the recovery of the last few hours instead of receiving live; Chromium died half-way through every cycle, slowly corrupting the profile where the session lives; and with the QR on screen, that same timer expired it every minute — which is why there was never time to even scan it.
+
+And there was a fourth, quieter one. The filter that decides whether a contact is a customer looked at two or three fields of the message. But WhatsApp populates different fields **depending on how the message arrives**: messages recovered at startup come through leaner, with the name somewhere else. The bot saw them as "nameless", they failed the filter, and they were **lost silently** — even though the contact was correctly tagged. Precisely the ones recovered after each restart, which were most of them.
+
+Four stacked causes, each masking the next, and a single symptom: *"some orders come in and others don't"*. The lesson isn't technical: **a symptom that looks like ten things can be several chained causes**, and patching what you can see — as I did with the polling — piles new failures on top of the old ones. The loop only broke when I stopped covering symptoms and went looking for what kept restarting the bot.
 
 ---
 
